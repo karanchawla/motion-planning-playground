@@ -2,7 +2,7 @@ import random
 import numpy as np 
 import math 
 import copy 
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
 show_animation = True 
 
@@ -11,7 +11,7 @@ class InformedRRTStar():
 	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.5, goalSampleRate=20, maxIter=100):
 
 		self.start = Node(start[0], start[1])
-		self.end = Node(goal[0], goal[1])
+		self.goal = Node(goal[0], goal[1])
 		self.minrand = randArea[0]
 		self.maxrand = randArea[1]
 		self.expandDis = expandDis
@@ -19,7 +19,7 @@ class InformedRRTStar():
 		self.maxIter = maxIter
 		self.obstacleList = obstacleList
 
-	def InformedRRTStarSearch(self):
+	def InformedRRTStarSearch(self, animation=True):
 
 		self.nodeList = [self.start]
 		# max length we expect to find in our 'informed' sample space, starts as infinite
@@ -28,16 +28,17 @@ class InformedRRTStar():
 		treeSize = 0
 		pathSize = 0
 		solutionSet = set()
+		path = None
 
 		# Computing the sampling space 
-		cMin = math.sqrt(pow(self.start[0] - self.goal[0], 2) + pow(self.start[1] - self.goal[1], 2))
-		xCenter = np.matrix([[(self.start[0] + self.goal[0]) / 2.0], [(self.start[1] + self.goal[1]) / 2.0], [0]])
-		a1 = np.matrix([[(self.goal[0] - self.start[0]) / cMin], [(self.goal[1] - self.start[1]) / cMin], [0]])
+		cMin = math.sqrt(pow(self.start.x - self.goal.x, 2) + pow(self.start.y - self.goal.y, 2))
+		xCenter = np.matrix([[(self.start.x + self.goal.x) / 2.0], [(self.start.y + self.goal.y) / 2.0], [0]])
+		a1 = np.matrix([[(self.goal.x - self.start.x) / cMin], [(self.goal.y - self.start.y) / cMin], [0]])
 		id1_t = np.matrix([1.0, 0.0, 0.0]) # first column of idenity matrix transposed
 		M = np.dot(a1 , id1_t)
 		U, S, Vh = np.linalg.svd(M, 1, 1)
 		C = np.dot(np.dot(U, np.diag([1.0, 1.0, np.linalg.det(U) * np.linalg.det(np.transpose(Vh))])), Vh)
-
+		print(C)
 		for i in range(self.maxIter):
 			# Sample space is defined by cBest 
 			# cMin is the minimum distance between the start point and the goal 
@@ -49,7 +50,7 @@ class InformedRRTStar():
 			nearestNode = self.findNearestPoint(randomNode)
 			newNode = self.steer(nearestNode, randomNode)
 
-			if self.isCollisionFree(nearestNode, newNode):
+			if self.check_collision_extend(nearestNode, newNode):
 				nearestSet = self.findNearestSet(newNode)
 				minNode = self.findMinPoint(nearestSet, nearestNode, newNode)
 				self.nodeList.append(newNode)
@@ -65,17 +66,35 @@ class InformedRRTStar():
 						pathSize = tempPathSize
 						cBest = tempPathLen
 
+
+	def isNearGoal(self, node):
+		d = self.lineCost(node, self.goal)
+		if d < math.pow(10, -3):
+			return True 
+		return False  
+
 	def sample(self, cMax, cMin, xCenter, C):
+		print(cMax)
 		if cMax < float('inf'):
 			temp = math.sqrt(cMax**2 - cMin**2) / 2.0
 			r = [cMax/2.0, temp, temp]
 			L = np.diag(r)
 			xBall = self.sampleUnitBall()
 			randomNode = no.dot(np.dot(C, L), xBall) + xCenter
-			randomNode = (randomNode[(0,0)], randomNode[(1,0)])
+			randomNode = Node(randomNode[(0,0)], randomNode[(1,0)])
 		else:
 			randomNode = self.getCollisionFreeRandomNode()
+
 		return randomNode
+
+	def getCollisionFreeRandomNode(self):
+		while True:
+			x = random.uniform(self.minrand, self.maxrand)
+			y = random.uniform(self.minrand, self.maxrand)
+			tempNode = Node(x, y)
+			if self.__CollisionCheck(tempNode, self.obstacleList):
+				return tempNode
+
 
 	def sampleUnitBall(self):
 		a = random.random()
@@ -101,9 +120,9 @@ class InformedRRTStar():
 
 	def steer(self, fromNode, toNode):
 		theta = math.atan2(toNode.y - fromNode.y, toNode.x - fromNode.x)
-		newPoint.x = fromNode.x + math.cos(theta) * self.expandDis 
-		newPoint.y = fromNode.y + math.sin(theta) * self.expandDis
-
+		x = fromNode.x + math.cos(theta) * self.expandDis 
+		y = fromNode.y + math.sin(theta) * self.expandDis
+		newPoint = Node(x, y)
 		return newPoint
 
 	def __CollisionCheck(self, newNode, obstacleList):
@@ -118,7 +137,7 @@ class InformedRRTStar():
 	def findNearestSet(self, newNode):
 		points = set()
 		numNodes = len(self.nodeList)
-		ballRadius = 50.0 * math.sqrt((math.log(nnode) / nnode))
+		ballRadius = 50.0 * math.sqrt((math.log(numNodes) / numNodes))
 		for vertex in self.nodeList:
 			eucDist = eucDist = math.sqrt((vertex.x - newNode.x)**2 
 				+ (vertex.y - newNode.y)**2)
@@ -142,35 +161,49 @@ class InformedRRTStar():
 
 	def rewire(self, nearestSet, minNode, newNode):
 		numNodes = len(self.nodeList)
-		for i in range(nearestSet):
-			nearNode = self.nodeList[i]
+		for node in nearestSet:
+			# nearNode = self.nodeList[i]
 
-			dx = newNode.x - nearNode.x 
-			dy = newNode.y - nearNode.y
+			dx = newNode.x - node.x 
+			dy = newNode.y - node.y
 			d = math.sqrt(dx**2 + dy**2)
 
 			scost = newNode.cost + d 
 
-			if nearNode.cost > scost:
-				if self.check_collision_extend(nearNode, newNode):
-					nearNode.parent = nnode - 1 
-					nearNode.cost = scost
+			if node.cost > scost:
+				if self.check_collision_extend(node, newNode):
+					node.parent = nnode - 1 
+					node.cost = scost
+
+	def check_collision_extend(self, node1, node2):
+
+		tempNode = copy.deepcopy(node1)
+		d = self.lineCost(node1, node2)
+		theta = math.atan2(node2.y - node1.y, node2.x - node1.x)
+		for i in range(int(d / self.expandDis)):
+			tempNode.x += self.expandDis * math.cos(theta)
+			tempNode.y += self.expandDis * math.sin(theta)
+			if not self.__CollisionCheck(tempNode, self.obstacleList):
+				return False 
+
+		return True 
 
 	def drawGraph(self, rnd=None):
 
 		plt.clf()
 		if rnd is not None: 
 			plt.plot(rnd[0], rnd[1], "^k")
-		for node in nodeList:
+		for node in self.nodeList:
 			if node.parent is not None: 
-				plt.plot([node.x, self.nodeList[node.parent].x], [
+				if node.x or node.y is not None: 
+					plt.plot([node.x, self.nodeList[node.parent].x], [
 						  node.y, self.nodeList[node.parent].y], "-g")
 
 		for (ox, oy, size) in self.obstacleList:
 			plt.plot(ox, oy, "ok", ms = 30 * size)
 
 		plt.plot(self.start.x, self.start.y, "xr")
-		plt.plot(self.end.x, self.end.y, "xr")
+		plt.plot(self.goal.x, self.goal.y, "xr")
 		plt.axis([-2, 15, -2, 15])
 		plt.grid(True)
 		plt.pause(0.01)
@@ -183,3 +216,34 @@ class Node():
 		self.y = y
 		self.cost = 0.0 
 		self.parent = None 
+
+
+def main():
+    print("Start rrt planning")
+
+    # ====Search Path with RRT====
+    obstacleList = [
+        (5, 5, 1),
+        (3, 6, 2),
+        (3, 8, 2),
+        (3, 10, 2),
+        (7, 5, 2),
+        (9, 5, 2)
+    ]  # [x,y,size(radius)]
+
+    # Set Initial parameters
+    rrt = InformedRRTStar(start = [0, 0], goal = [5, 10],
+              randArea = [-2, 15], obstacleList = obstacleList)
+    path = rrt.InformedRRTStarSearch(animation = show_animation)
+
+    # Draw final path
+    if show_animation:
+        rrt.drawGraph()
+        plt.plot([x for (x, y) in path], [y for (x, y) in path], '-r')
+        plt.grid(True)
+        plt.pause(0.01)  # Need for Mac
+        plt.show()
+
+
+if __name__ == '__main__':
+    main()
