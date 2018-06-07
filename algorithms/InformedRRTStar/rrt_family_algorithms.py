@@ -8,7 +8,7 @@ show_animation = True
 
 class RRTFamilyPlanners():
 
-	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.5, goalSampleRate=10, maxIter=1000):
+	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.2, goalSampleRate=10, maxIter=200):
 
 		self.start = Node(start[0], start[1])
 		self.goal = Node(goal[0], goal[1])
@@ -54,6 +54,73 @@ class RRTFamilyPlanners():
 		path.append([self.start.x, self.start.y])
 
 		return path	
+
+	def RRTStarSearch(self, animation=True):
+		self.nodeList = [self.start]
+		while True:
+			rnd = self.sampleFreeSpace()
+			nind = self.getNearestListIndex(self.nodeList, rnd)
+			nearestNode = self.nodeList[nind]
+			# steer 
+			theta = math.atan2(rnd[1] - nearestNode.y, rnd[0] - nearestNode.x)
+			newNode = self.getNewNode(theta, nind, nearestNode)
+
+			if self.__CollisionCheck(newNode, self.obstacleList):
+				nearinds = self.findNearNodes(newNode)
+				newNode = self.chooseParent(newNode, nearinds)
+				self.nodeList.append(newNode)
+				self.rewire(newNode, nearinds)
+
+			if animation:
+				self.drawGraph(rnd)
+
+			if self.isNearGoal(newNode):
+				break
+
+		# get path 
+
+		# lastIndex = self.getBestLastIndex()
+		# if lastIndex is None: 
+			# return None
+
+		# path = self.getFinalCourse(lastIndex)
+		path = [[self.goal.x, self.goal.y]]
+		lastIndex = len(self.nodeList) -1 
+		while self.nodeList[lastIndex].parent is not None: 
+			node = self.nodeList[lastIndex]
+			path.append([node.x, node.y])
+			lastIndex = node.parent
+		path.append([self.start.x, self.start.y])
+
+		return path	
+
+	def getFinalCourse(self, lastIndex):
+		path = [[self.goal.x, self.goal.y]]
+		while self.nodeList[lastIndex].parent is not None:
+			node = self.nodeList[lastIndex]
+			path.append([node.x, node.y])
+			lastIndex = node.parent
+		path.append([self.start.x, self.start.y])
+		return path
+
+	def getBestLastIndex(self):
+		disgList = [self.calcDistToGoal(node.x, node.y) 
+					for node in self.nodeList]
+		goalInds = [disgList.index(i) for i in disgList if i <= self.expandDis]
+
+		if len(goalInds) == 0:
+			return None 
+
+		minCost = min([self.nodeList[i].cost for i in goalInds])
+		for i in goalInds:
+			if self.nodeList[i].cost == minCost:
+				return i
+
+		return None 
+
+	def calcDistToGoal(self, x, y):
+		return np.linalg.norm([x - self.goal.x, y - self.goal.y])
+
 
 	def getNewNode(self, theta, nind, nearestNode):
 		newNode = copy.deepcopy(nearestNode)
@@ -327,18 +394,18 @@ def main():
 
     # ====Search Path with RRT====
     obstacleList = [
-        (5, 5, 1),
-        (3, 6, 2),
-        (3, 8, 2),
-        (3, 10, 2),
-        (7, 5, 2),
-        (9, 5, 2)
+        (5, 5, 1)
+        # (3, 6, 2),
+        # (3, 8, 2),
+        # (3, 10, 2),
+        # (7, 5, 2),
+        # (9, 5, 2)
     ]  # [x,y,size(radius)]
 
     # Set Initial parameters
     rrt = RRTFamilyPlanners(start = [0, 0], goal = [5, 10],
               randArea = [-2, 15], obstacleList = obstacleList)
-    path = rrt.RRTSearch(animation = show_animation)
+    path = rrt.RRTStarSearch(animation = show_animation)
 
     # Draw final path
     if show_animation:
