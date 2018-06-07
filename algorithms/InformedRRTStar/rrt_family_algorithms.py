@@ -8,7 +8,7 @@ show_animation = True
 
 class RRTFamilyPlanners():
 
-	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.2, goalSampleRate=10, maxIter=200):
+	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.5, goalSampleRate=10, maxIter=200):
 
 		self.start = Node(start[0], start[1])
 		self.goal = Node(goal[0], goal[1])
@@ -19,6 +19,7 @@ class RRTFamilyPlanners():
 		self.maxIter = maxIter
 		self.obstacleList = obstacleList
 
+##################################################################################
 	def RRTSearch(self, animation=True):
 		self.nodeList = [self.start]
 		while True: 
@@ -45,18 +46,53 @@ class RRTFamilyPlanners():
 				self.drawGraph(rnd)
 
 		# compute the path 
-		path = [[self.goal.x, self.goal.y]]
 		lastIndex = len(self.nodeList) -1 
-		while self.nodeList[lastIndex].parent is not None: 
-			node = self.nodeList[lastIndex]
-			path.append([node.x, node.y])
-			lastIndex = node.parent
-		path.append([self.start.x, self.start.y])
+		path = self.getFinalCourse(lastIndex)
 
 		return path	
 
+	def sampleFreeSpace(self):
+		if random.randint(0,100) > self.goalSampleRate:
+				rnd = [random.uniform(self.minrand, self.maxrand),
+					   random.uniform(self.minrand, self.maxrand)]
+		else:
+			rnd = [self.goal.x, self.goal.y]
+		return rnd
+
+	def getNearestListIndex(self, nodes, rnd):
+		dList = [(node.x - rnd[0])**2 + 
+				 (node.y - rnd[1])**2 for node in nodes]
+		minIndex = dList.index(min(dList))
+		return minIndex
+
+	def getNewNode(self, theta, nind, nearestNode):
+		newNode = copy.deepcopy(nearestNode)
+
+		newNode.x += self.expandDis * math.cos(theta)
+		newNode.y += self.expandDis * math.sin(theta)
+		newNode.parent = nind 
+
+		return newNode
+
+	def __CollisionCheck(self, newNode, obstacleList):
+		for (ox, oy, size) in obstacleList:
+			dx = ox - newNode.x 
+			dy = oy - newNode.y 
+			d = dx**2 + dy**2
+			if d <= size**2:
+				return False 
+		return True 
+
+	def isNearGoal(self, node):
+		d = self.lineCost(node, self.goal)
+		if d < self.expandDis:
+			return True 
+		return False  
+
+##################################################################################
 	def RRTStarSearch(self, animation=True):
 		self.nodeList = [self.start]
+		iter = 1
 		while True:
 			rnd = self.sampleFreeSpace()
 			nind = self.getNearestListIndex(self.nodeList, rnd)
@@ -71,6 +107,10 @@ class RRTFamilyPlanners():
 				self.nodeList.append(newNode)
 				self.rewire(newNode, nearinds)
 
+			iter += 1
+			if(iter == self.maxIter):
+				break
+
 			if animation:
 				self.drawGraph(rnd)
 
@@ -78,21 +118,69 @@ class RRTFamilyPlanners():
 				break
 
 		# get path 
-
-		# lastIndex = self.getBestLastIndex()
-		# if lastIndex is None: 
-			# return None
-
-		# path = self.getFinalCourse(lastIndex)
-		path = [[self.goal.x, self.goal.y]]
 		lastIndex = len(self.nodeList) -1 
-		while self.nodeList[lastIndex].parent is not None: 
-			node = self.nodeList[lastIndex]
-			path.append([node.x, node.y])
-			lastIndex = node.parent
-		path.append([self.start.x, self.start.y])
+		path = self.getFinalCourse(lastIndex)
 
 		return path	
+
+	def rewire(self, newNode, nearInds):
+		nnode = len(self.nodeList)
+		for i in nearInds:
+			nearNode = self.nodeList[i]
+
+			d = math.sqrt((nearNode.x - newNode.x)**2 +
+						  (nearNode.y - newNode.y)**2)
+			scost = newNode.cost + d
+			if nearNode.cost > scost:
+				if self.check_collision_extend(nearNode, newNode):
+					nearNode.parent = nnode - 1
+					nearNode.cost = scost
+
+	def findNearNodes(self, newNode):
+		numNodes = len(self.nodeList)
+
+		r = 20.0 * math.sqrt((math.log(numNodes)/numNodes))
+
+		dList = [(node.x - newNode.x)**2 +
+				 (node.y - newNode.y)**2 for node in self.nodeList]
+		nearInds = [dList.index(i) for i in dList if i <= r**2]
+		return nearInds
+
+	def check_collision_extend(self, node1, node2):
+
+		tempNode = copy.deepcopy(node1)
+		d = self.lineCost(node1, node2)
+		theta = math.atan2(node2.y - node1.y, node2.x - node1.x)
+		for i in range(int(d / self.expandDis)):
+			tempNode.x += self.expandDis * math.cos(theta)
+			tempNode.y += self.expandDis * math.sin(theta)
+			if not self.__CollisionCheck(tempNode, self.obstacleList):
+				return False 
+
+		return True 
+
+	def chooseParent(self, newNode, nearInds):
+		if len(nearInds) == 0:
+			return newNode 
+		dList = []
+		for i in nearInds:
+			if self.check_collision_extend(self.nodeList[i], newNode):
+				dList.append(self.nodeList[i].cost 
+					+ self.lineCost(self.nodeList[i], newNode))
+			else:
+				dList.append(float('inf'))
+
+		minCost = min(dList)
+		minInd = nearInds[dList.index(minCost)]
+
+		if minCost == float('inf'):
+			print("mincost is inf")
+			return newNode
+
+		newNode.cost = minCost
+		newNode.parent = minInd
+
+		return newNode
 
 	def getFinalCourse(self, lastIndex):
 		path = [[self.goal.x, self.goal.y]]
@@ -121,30 +209,7 @@ class RRTFamilyPlanners():
 	def calcDistToGoal(self, x, y):
 		return np.linalg.norm([x - self.goal.x, y - self.goal.y])
 
-
-	def getNewNode(self, theta, nind, nearestNode):
-		newNode = copy.deepcopy(nearestNode)
-
-		newNode.x += self.expandDis * math.cos(theta)
-		newNode.y += self.expandDis * math.sin(theta)
-		newNode.parent = nind 
-
-		return newNode
-
-	def sampleFreeSpace(self):
-		if random.randint(0,100) > self.goalSampleRate:
-				rnd = [random.uniform(self.minrand, self.maxrand),
-					   random.uniform(self.minrand, self.maxrand)]
-		else:
-			rnd = [self.goal.x, self.goal.y]
-		return rnd
-
-	def getNearestListIndex(self, nodes, rnd):
-		dList = [(node.x - rnd[0])**2 + 
-				 (node.y - rnd[1])**2 for node in nodes]
-		minIndex = dList.index(min(dList))
-		return minIndex
-
+##################################################################################
 	def InformedRRTStarSearch(self, animation=True):
 
 		self.nodeList = [self.start]
@@ -208,59 +273,6 @@ class RRTFamilyPlanners():
 		path.append([self.start.x, self.start.y])
 		return path, pathLen
 
-	def rewire(self, newNode, nearInds):
-		nnode = len(self.nodeList)
-		for i in nearInds:
-			nearNode = self.nodeList[i]
-
-			d = math.sqrt((nearNode.x - newNode.x)**2 +
-						  (nearNode.y - newNode.y)**2)
-			scost = newNode.cost + d
-			if nearNode.cost > scost:
-				if self.check_collision_extend(nearNode, newNode):
-					nearNode.parent = nnode - 1
-					nearNode.cost = scost
-
-
-	def chooseParent(self, newNode, nearInds):
-		if len(nearInds) == 0:
-			return newNode 
-		dList = []
-		for i in nearInds:
-			if self.check_collision_extend(self.nodeList[i], newNode):
-				dList.append(self.nodeList[i].cost 
-					+ self.lineCost(self.nodeList[i], newNode))
-			else:
-				dList.append(float('inf'))
-
-		minCost = min(dList)
-		minInd = nearInds[dList.index(minCost)]
-
-		if minCost == float('inf'):
-			print("mincost is inf")
-			return newNode
-
-		newNode.cost = minCost
-		newNode.parent = minInd
-
-		return newNode
-
-	def findNearNodes(self, newNode):
-		numNodes = len(self.nodeList)
-
-		r = 50.0 * math.sqrt((math.log(numNodes)/numNodes))
-
-		dList = [(node.x - newNode.x)**2 +
-				 (node.y - newNode.y)**2 for node in self.nodeList]
-		nearInds = [dList.index(i) for i in dList if i <= r**2]
-		return nearInds
-
-	def isNearGoal(self, node):
-		d = self.lineCost(node, self.goal)
-		if d < self.expandDis:
-			return True 
-		return False  
-
 	def sample(self, cMax, cMin, xCenter, C):
 		if cMax < float('inf'):
 			temp = math.sqrt(cMax**2 - cMin**2) / 2.0
@@ -312,15 +324,6 @@ class RRTFamilyPlanners():
 		newPoint = Node(x, y)
 		return newPoint
 
-	def __CollisionCheck(self, newNode, obstacleList):
-		for (ox, oy, size) in obstacleList:
-			dx = ox - newNode.x 
-			dy = oy - newNode.y 
-			d = dx**2 + dy**2
-			if d <= size**2:
-				return False 
-		return True 
-
 	def findNearestSet(self, newNode):
 		points = set()
 		numNodes = len(self.nodeList)
@@ -345,19 +348,7 @@ class RRTFamilyPlanners():
 
 	def lineCost(self, node1, node2):
 		return math.sqrt((node1.x - node2.x)**2 + (node1.y - node2.y)**2)
-
-	def check_collision_extend(self, node1, node2):
-
-		tempNode = copy.deepcopy(node1)
-		d = self.lineCost(node1, node2)
-		theta = math.atan2(node2.y - node1.y, node2.x - node1.x)
-		for i in range(int(d / self.expandDis)):
-			tempNode.x += self.expandDis * math.cos(theta)
-			tempNode.y += self.expandDis * math.sin(theta)
-			if not self.__CollisionCheck(tempNode, self.obstacleList):
-				return False 
-
-		return True 
+##################################################################################
 
 	def drawGraph(self, rnd=None):
 
@@ -405,7 +396,7 @@ def main():
     # Set Initial parameters
     rrt = RRTFamilyPlanners(start = [0, 0], goal = [5, 10],
               randArea = [-2, 15], obstacleList = obstacleList)
-    path = rrt.RRTStarSearch(animation = show_animation)
+    path = rrt.RRTSearch(animation = show_animation)
 
     # Draw final path
     if show_animation:
