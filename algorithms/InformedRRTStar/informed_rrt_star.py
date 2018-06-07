@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 show_animation = True 
 
-class InformedRRTStar():
+class RRTFamilyPlanners():
 
 	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.5, goalSampleRate=10, maxIter=1000):
 
@@ -18,6 +18,65 @@ class InformedRRTStar():
 		self.goalSampleRate = goalSampleRate
 		self.maxIter = maxIter
 		self.obstacleList = obstacleList
+
+	def RRTSearch(self, animation=True):
+		self.nodeList = [self.start]
+		while True: 
+			# get random point in the free space
+			rnd = self.sampleFreeSpace()
+			# find closest node in the tree
+			nind  = self.getNearestListIndex(self.nodeList, rnd)
+			nearestNode = self.nodeList[nind]
+			theta = math.atan2(rnd[1] - nearestNode.y, rnd[0] - nearestNode.x)
+			# compute the position of the new node
+			newNode = self.getNewNode(theta, nind, nearestNode)
+			# collision check
+			if not self.__CollisionCheck(newNode, self.obstacleList):
+				continue 
+			# if collision doesn't happen in extending the nearest node to the new node
+			# add it to the tree
+			self.nodeList.append(newNode)
+
+			#check if we reached the goal 
+			if self.isNearGoal(newNode):
+				break
+
+			if animation:
+				self.drawGraph(rnd)
+
+		# compute the path 
+		path = [[self.goal.x, self.goal.y]]
+		lastIndex = len(self.nodeList) -1 
+		while self.nodeList[lastIndex].parent is not None: 
+			node = self.nodeList[lastIndex]
+			path.append([node.x, node.y])
+			lastIndex = node.parent
+		path.append([self.start.x, self.start.y])
+
+		return path	
+
+	def getNewNode(self, theta, nind, nearestNode):
+		newNode = copy.deepcopy(nearestNode)
+
+		newNode.x += self.expandDis * math.cos(theta)
+		newNode.y += self.expandDis * math.sin(theta)
+		newNode.parent = nind 
+
+		return newNode
+
+	def sampleFreeSpace(self):
+		if random.randint(0,100) > self.goalSampleRate:
+				rnd = [random.uniform(self.minrand, self.maxrand),
+					   random.uniform(self.minrand, self.maxrand)]
+		else:
+			rnd = [self.goal.x, self.goal.y]
+		return rnd
+
+	def getNearestListIndex(self, nodes, rnd):
+		dList = [(node.x - rnd[0])**2 + 
+				 (node.y - rnd[1])**2 for node in nodes]
+		minIndex = dList.index(min(dList))
+		return minIndex
 
 	def InformedRRTStarSearch(self, animation=True):
 
@@ -131,7 +190,7 @@ class InformedRRTStar():
 
 	def isNearGoal(self, node):
 		d = self.lineCost(node, self.goal)
-		if d < math.pow(10, -3):
+		if d < self.expandDis:
 			return True 
 		return False  
 
@@ -277,9 +336,9 @@ def main():
     ]  # [x,y,size(radius)]
 
     # Set Initial parameters
-    rrt = InformedRRTStar(start = [0, 0], goal = [5, 10],
+    rrt = RRTFamilyPlanners(start = [0, 0], goal = [5, 10],
               randArea = [-2, 15], obstacleList = obstacleList)
-    path = rrt.InformedRRTStarSearch(animation = show_animation)
+    path = rrt.RRTSearch(animation = show_animation)
 
     # Draw final path
     if show_animation:
