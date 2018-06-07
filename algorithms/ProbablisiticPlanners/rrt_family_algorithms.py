@@ -144,26 +144,23 @@ class RRTFamilyPlanners():
 					nearNode.cost = scost
 
 	def check_collision_extend(self, nearNode, theta, d):
-
-		tempNode = copy.deepcopy(nearNode)
+		tmpNode = copy.deepcopy(nearNode)
 
 		for i in range(int(d / self.expandDis)):
-			tempNode.x += 0.1 * math.cos(theta)
-			tempNode.y += 0.1 * math.sin(theta)
-			if not self.__CollisionCheck(tempNode, self.obstacleList):
-				return False 
+			tmpNode.x += self.expandDis * math.cos(theta)
+			tmpNode.y += self.expandDis * math.sin(theta)
+			if not self.__CollisionCheck(tmpNode, self.obstacleList):
+				return False
 
-		return True 
+		return True
 
 	def findNearNodes(self, newNode):
-		numNodes = len(self.nodeList)
-
-		r = 10.0 * math.sqrt((math.log(numNodes)/numNodes))
-
-		dList = [(node.x - newNode.x)**2 +
-				 (node.y - newNode.y)**2 for node in self.nodeList]
-		nearInds = [dList.index(i) for i in dList if i <= r**2]
-		return nearInds
+		nnode = len(self.nodeList)
+		r = 50.0 * math.sqrt((math.log(nnode) / nnode))
+		dlist = [(node.x - newNode.x) ** 2 +
+				(node.y - newNode.y) ** 2 for node in self.nodeList]
+		nearinds = [dlist.index(i) for i in dlist if i <= r ** 2]
+		return nearinds
 
 	def chooseParent(self, newNode, nearInds):
 		if len(nearInds) == 0:
