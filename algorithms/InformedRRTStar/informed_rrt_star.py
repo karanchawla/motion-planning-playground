@@ -8,7 +8,7 @@ show_animation = True
 
 class InformedRRTStar():
 
-	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.5, goalSampleRate=20, maxIter=100):
+	def __init__(self, start, goal, obstacleList, randArea, expandDis=0.5, goalSampleRate=10, maxIter=1000):
 
 		self.start = Node(start[0], start[1])
 		self.goal = Node(goal[0], goal[1])
@@ -38,7 +38,6 @@ class InformedRRTStar():
 		M = np.dot(a1 , id1_t)
 		U, S, Vh = np.linalg.svd(M, 1, 1)
 		C = np.dot(np.dot(U, np.diag([1.0, 1.0, np.linalg.det(U) * np.linalg.det(np.transpose(Vh))])), Vh)
-		print(C)
 		for i in range(self.maxIter):
 			# Sample space is defined by cBest 
 			# cMin is the minimum distance between the start point and the goal 
@@ -46,26 +45,89 @@ class InformedRRTStar():
 			# cBest changes when a new path is found 
 
 			randomNode = self.sample(cBest, cMin, xCenter, C)
-
 			nearestNode = self.findNearestPoint(randomNode)
 			newNode = self.steer(nearestNode, randomNode)
 
+			if animation:
+				rnd = [randomNode.x, randomNode.y]
+				self.drawGraph(rnd)
+
 			if self.check_collision_extend(nearestNode, newNode):
-				nearestSet = self.findNearestSet(newNode)
-				minNode = self.findMinPoint(nearestSet, nearestNode, newNode)
+				# nearestSet = self.findNearestSet(newNode)
+				nearInds = self.findNearNodes(newNode)
+				# minNode = self.findMinPoint(nearestSet, nearestNode, newNode)
+				newNode = self.chooseParent(newNode, nearInds)
+
 				self.nodeList.append(newNode)
-				self.rewire(nearestSet, minNode, newNode)
+				self.rewire(newNode, nearInds)
 
 				if self.isNearGoal(newNode):
 					solutionSet.add(newNode)
-					tempPath, tempTreeSize, tempPathSize, tempPathLen = self.findPath(self.start, newNode)
+					tempPath, tempPathLen = self.findPath(newNode)
 					if tempPathLen < pathLen:
-						pathLen = tempPathLen
 						path = tempPath
-						treeSize = tempTreeSize
-						pathSize = tempPathSize
 						cBest = tempPathLen
+			
+		return path
 
+	def findPath(self, goalNode):
+		goalInd = self.nodeList.index(goalNode)
+		path = [[goalNode.x, goalNode.y]]
+		pathLen = 0
+		while self.nodeList[goalNode].parent is not None:
+			node = self.nodeList[goalInd]
+			path.append([node.x, node.y])
+			goalInd = node.parent
+			pathLen += self.lineCost(node, self.nodeList[goalInd])
+		path.append([self.start.x, self.start.y])
+		return path, pathLen
+
+	def rewire(self, newNode, nearInds):
+		nnode = len(self.nodeList)
+		for i in nearInds:
+			nearNode = self.nodeList[i]
+
+			d = math.sqrt((nearNode.x - newNode.x)**2 +
+						  (nearNode.y - newNode.y)**2)
+			scost = newNode.cost + d
+			if nearNode.cost > scost:
+				if self.check_collision_extend(nearNode, newNode):
+					nearNode.parent = nnode - 1
+					nearNode.cost = scost
+
+
+	def chooseParent(self, newNode, nearInds):
+		if len(nearInds) == 0:
+			return newNode 
+		dList = []
+		for i in nearInds:
+			if self.check_collision_extend(self.nodeList[i], newNode):
+				dList.append(self.nodeList[i].cost 
+					+ self.lineCost(self.nodeList[i], newNode))
+			else:
+				dList.append(float('inf'))
+
+		minCost = min(dList)
+		minInd = nearInds[dList.index(minCost)]
+
+		if minCost == float('inf'):
+			print("mincost is inf")
+			return newNode
+
+		newNode.cost = minCost
+		newNode.parent = minInd
+
+		return newNode
+
+	def findNearNodes(self, newNode):
+		numNodes = len(self.nodeList)
+
+		r = 50.0 * math.sqrt((math.log(numNodes)/numNodes))
+
+		dList = [(node.x - newNode.x)**2 +
+				 (node.y - newNode.y)**2 for node in self.nodeList]
+		nearInds = [dList.index(i) for i in dList if i <= r**2]
+		return nearInds
 
 	def isNearGoal(self, node):
 		d = self.lineCost(node, self.goal)
@@ -74,7 +136,6 @@ class InformedRRTStar():
 		return False  
 
 	def sample(self, cMax, cMin, xCenter, C):
-		print(cMax)
 		if cMax < float('inf'):
 			temp = math.sqrt(cMax**2 - cMin**2) / 2.0
 			r = [cMax/2.0, temp, temp]
@@ -158,22 +219,6 @@ class InformedRRTStar():
 
 	def lineCost(self, node1, node2):
 		return math.sqrt((node1.x - node2.x)**2 + (node1.y - node2.y)**2)
-
-	def rewire(self, nearestSet, minNode, newNode):
-		numNodes = len(self.nodeList)
-		for node in nearestSet:
-			# nearNode = self.nodeList[i]
-
-			dx = newNode.x - node.x 
-			dy = newNode.y - node.y
-			d = math.sqrt(dx**2 + dy**2)
-
-			scost = newNode.cost + d 
-
-			if node.cost > scost:
-				if self.check_collision_extend(node, newNode):
-					node.parent = nnode - 1 
-					node.cost = scost
 
 	def check_collision_extend(self, node1, node2):
 
