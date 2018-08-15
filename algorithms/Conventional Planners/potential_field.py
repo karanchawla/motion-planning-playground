@@ -5,7 +5,7 @@ show_animation = True
 
 KP = 5.0 
 KR = 100.0
-AREA_WIDTH = 30.0 
+AREA_WIDTH = 50.0 
 
 def calculate_attractive_potential(x, y, gx, gy):
     return 0.5 * KP * np.hypot(x - gx, y - gy)
@@ -65,7 +65,7 @@ def get_motion_model():
 
 def potential_field_planner(sx, sy, gx, gy, ox, oy, robot_rad, res):
 
-    potential_map, minx, miny = calculate_potential_field(gx, gy, ox, oy, robot_rad, res)
+    potential_map, minx, miny = calculate_potential_field(gx, gy, ox, oy, res, robot_rad)
     # search path
 
     d = np.hypot(sx - gx, sy - gy)
@@ -125,23 +125,22 @@ def main():
 
     sx = 0.0  # start x position [m]
     sy = 10.0  # start y positon [m]
-    gx = 10.0  # goal x position [m]
-    gy = 10.0  # goal y position [m]
+    gx = 30.0  # goal x position [m]
+    gy = 30.0  # goal y position [m]
 
     grid_size = 0.5  # potential grid size [m]
     robot_radius = 5.0  # robot radius [m]
 
-    ox = [15.0, 5.0, 20.0, 25.0]  # obstacle x position list [m]
-    oy = [25.0, 15.0, 26.0, 25.0]  # obstacle y position list [m]
+    ox = [15.0, 5.0, 20.0, 25.0, 5.0]  # obstacle x position list [m]
+    oy = [25.0, 15.0, 26.0, 25.0, 12.0]  # obstacle y position list [m]
 
 
     if show_animation:
-        plt.grid(True)
         plt.axis("equal")
 
     # path generation
     rx, ry = potential_field_planner(
-        sx, sy, gx, gy, ox, oy, grid_size, robot_radius)
+        sx, sy, gx, gy, ox, oy, robot_radius, grid_size)
 
     if show_animation:
         plt.show()
